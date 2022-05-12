@@ -1,27 +1,20 @@
-const mongoose = require('mongoose');
-const { validationResult } = require('express-validator/check');
+const app = require('../app');
+const {
+    errorHandler,
+    validate,
+    getOrSetCache,
+    flushRedis,
+} = require('../utils/helpers');
 
 // schemas
 const Bio = require('../models/bio.schema');
 const Skill = require('../models/skills.schema');
-const Project = require('../models/projects.schema');
 const Contact = require('../models/contact.schema');
-
-// helper functions
-const errorHandler = (err, next) => {
-    if (!err.statusCode) {
-        err.statusCode = 500;
-    }
-    if (err.response?.data?.error) {
-        next(err.response.data.error);
-    } else {
-        next(err);
-    }
-};
 
 // controllers
 // ---- BIO -----
 exports.createBio = (req, res, next) => {
+    validate(req, res);
     const { bio } = req.body;
 
     Bio.countDocuments()
@@ -39,6 +32,7 @@ exports.createBio = (req, res, next) => {
         })
         .then((data) => {
             if (data) {
+                flushRedis();
                 res.status(200).json({ message: 'Bio created sucessfully' });
             }
         })
@@ -48,11 +42,14 @@ exports.createBio = (req, res, next) => {
 };
 
 exports.updateBio = (req, res, next) => {
+    validate(req, res);
+
     const { bio } = req.body;
     const id = req.params.id;
 
     Bio.findByIdAndUpdate({ _id: id }, { bio })
-        .then((data) => {
+        .then(() => {
+            flushRedis();
             res.status(200).json({ message: 'Bio updated sucessfully' });
         })
         .catch((err) => {
@@ -60,18 +57,19 @@ exports.updateBio = (req, res, next) => {
         });
 };
 
-exports.getBio = (req, res, next) => {
-    Bio.findOne()
-        .then((data) => {
-            res.status(200).json({ data });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
+exports.getBio = async (req, res) => {
+    const data = await getOrSetCache('bio', async () => {
+        const bio = await Bio.findOne().lean();
+        if (bio) return bio;
+    });
+
+    res.status(200).json({ data });
 };
 
 // ----- SKILLS ------
 exports.addSkill = (req, res, next) => {
+    validate(req, res);
+
     const { skillName, type, imageUrl } = req.body;
 
     const skills = new Skill({
@@ -82,7 +80,8 @@ exports.addSkill = (req, res, next) => {
 
     skills
         .save()
-        .then((data) => {
+        .then(() => {
+            flushRedis();
             res.status(200).json({ message: 'Skills added sucessfully' });
         })
         .catch((err) => {
@@ -101,6 +100,7 @@ exports.removeSkill = (req, res, next) => {
 
     Skill.findByIdAndDelete({ _id: id })
         .then((data) => {
+            flushRedis();
             res.status(200).json({
                 message: `${data.skillName} removed from skills sucessfully.`,
             });
@@ -110,114 +110,24 @@ exports.removeSkill = (req, res, next) => {
         });
 };
 
-exports.getSkills = (req, res, next) => {
-    Skill.find()
-        .then((data) => {
-            res.status(200).json({
-                data,
-            });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
-};
-
-// ----- PROJECTS ------
-exports.addProject = (req, res, next) => {
-    Project.countDocuments().then((count) => {
-        if (count >= 10) {
-            return res
-                .status(405)
-                .json({ message: 'Cannot add more projects, limit reached!' });
-        }
-    });
-    const project = new Project({ ...req.body });
-
-    project
-        .save()
-        .then((data) => {
-            res.status(200).json({ message: 'Project added sucessfully' });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
-};
-
-exports.editProject = (req, res, next) => {
-    const id = req.params.id;
-    Project.findByIdAndUpdate({ _id: id }, { ...req.body })
-        .then((data) => {
-            res.status(200).json({ message: 'Project updated sucessfully' });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
-};
-
-exports.showcaseProject = (req, res, next) => {
-    const id = req.params.id;
-    Project.countDocuments({ showcase: true }).then((count) => {
-        if (count >= 5) {
-            return res
-                .status(405)
-                .status({ message: 'Cannot list more than 5 projects.' });
-        }
+exports.getSkills = async (req, res) => {
+    const skillsByRedis = await getOrSetCache('skills', async () => {
+        const skills = await Skill.find().lean();
+        if (skills.length > 0) return skills;
     });
 
-    Project.findByIdAndUpdate({ _id: id }, { showcase: true })
-        .then((data) => {
-            res.status(200).json({ message: 'Project showcased sucessfully' });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
-};
-
-exports.archiveProject = (req, res, next) => {
-    const id = req.params.id;
-    Project.countDocuments({ showcase: true }).then((count) => {
-        if (count === 1) {
-            return res.status(405).status({
-                message: 'Cannot archive all projects from showcase.',
-            });
-        }
-    });
-
-    Project.findByIdAndUpdate({ _id: id }, { archive: true })
-        .then((data) => {
-            res.status(200).json({ message: 'Project archived sucessfully' });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
-};
-
-exports.deleteProject = (req, res, next) => {
-    const id = req.params.id;
-    Project.countDocuments().then((count) => {
-        if (count === 1) {
-            return res.status(405).status({
-                message: 'Cannot delete the last project.',
-            });
-        }
-    });
-
-    Project.findByIdAndDelete({ _id: id })
-        .then((data) => {
-            res.status(200).json({ message: 'Project deleted sucessfully' });
-        })
-        .catch((err) => {
-            errorHandler(err, next);
-        });
+    return res.status(200).json({ data: skillsByRedis });
 };
 
 // ----- CONTACT ------
 exports.addContact = (req, res, next) => {
+    validate(req, res);
+
     const contact = new Contact({ ...req.body });
 
     contact
         .save()
-        .then((data) => {
+        .then(() => {
             res.status(200).json({
                 message: 'Contact details added sucessfully',
             });
@@ -227,9 +137,11 @@ exports.addContact = (req, res, next) => {
         });
 };
 exports.updateContact = (req, res, next) => {
+    validate(req, res);
+
     const id = req.params.id;
     Contact.findByIdAndUpdate({ _id: id }, { ...req.body })
-        .then((data) => {
+        .then(() => {
             res.status(200).json({
                 message: 'Contact details updated sucessfully',
             });

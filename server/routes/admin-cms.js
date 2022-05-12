@@ -4,6 +4,7 @@ const { body } = require('express-validator/check');
 // local imports
 const checkSecret = require('../middlewares/checkSecret');
 const adminCmsController = require('../controllers/admin-cms');
+const projectController = require('../controllers/project.controller');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ router.post(
     [
         body('skillName').isString().isLength({ min: 1 }).trim(),
         body('type').isString().isLength({ min: 1 }).trim(),
-        body('imageUrl').isString().isLength({ min: 1 }).trim(),
+        body('imageUrl').isURL().isLength({ min: 1 }).trim(),
     ],
     checkSecret,
     adminCmsController.addSkill
@@ -48,7 +49,7 @@ router.post(
         body('hosted_link').isString().isLength({ min: 1 }).trim(),
     ],
     checkSecret,
-    adminCmsController.addProject
+    projectController.addProject
 );
 router.put(
     '/edit-project/:id',
@@ -61,23 +62,25 @@ router.put(
         body('hosted_link').isString().isLength({ min: 1 }).trim(),
     ],
     checkSecret,
-    adminCmsController.editProject
+    projectController.editProject
 );
 router.patch(
     '/showcase-project/:id',
     checkSecret,
-    adminCmsController.showcaseProject
+    projectController.showcaseProject
 );
 router.patch(
     '/archive-project/:id',
     checkSecret,
-    adminCmsController.archiveProject
+    projectController.archiveProject
 );
 router.delete(
     '/delete-project/:id',
     checkSecret,
-    adminCmsController.deleteProject
+    projectController.deleteProject
 );
+
+router.get('/get-projects', checkSecret, projectController.deleteProject);
 
 // contact
 router.post(

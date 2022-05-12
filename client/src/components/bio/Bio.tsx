@@ -1,33 +1,64 @@
 import { Col, Row, Form, Input, Button, message } from 'antd';
-import React, { useEffect, useState } from 'react';
-import { ShowAlert } from '..';
+import { useEffect, useState } from 'react';
 import customAxios from '../../axios.config';
-import { BioApiResponse, BioFormValues } from '../../interfaces/bio.interface';
+import {
+    PostResponse,
+    BioData,
+    BioFormValues,
+} from '../../interfaces/interface';
+import { handleErrors } from '../utils/helpers';
 
 const { TextArea } = Input;
 
 const Bio = () => {
-    const [bio, setBio] = useState();
+    const [isEdit, setIsEdit] = useState<boolean>(false);
+    const [bioId, setBioId] = useState<string>();
+    const [bioForm] = Form.useForm();
 
     const onSubmit = (values: BioFormValues) => {
-        console.log(values.bio);
-
-        customAxios
-            .post<BioApiResponse>('/create-bio', { bio: values.bio })
+        if(!isEdit) {
+            customAxios
+            .post<PostResponse>('/create-bio', { bio: values.bio })
             .then((res) => {
                 message.success(res.data.message);
             })
             .catch((err) => {
-                message.error(err);
+                handleErrors(err);
             });
+        } else {
+            customAxios
+            .put<PostResponse>(`/update-bio/${bioId}`, { bio: values.bio })
+            .then((res) => {
+                message.success(res.data.message);
+            })
+            .catch((err) => {
+                handleErrors(err);
+            });
+        }
     };
 
     useEffect(() => {
-      
-    })
+        customAxios
+            .get<BioData>('/get-bio')
+            .then((data) => {
+                if (data.data.data.bio) {
+                    setIsEdit(true);
+                    setBioId(data.data.data._id);
+                    bioForm.setFieldsValue({
+                        bio: data.data.data.bio,
+                    });
+                } else {
+                    setIsEdit(false);
+                }
+            })
+            .catch((err) => {
+                handleErrors(err);
+            });
+    }, []);
+
     return (
         <>
-            <Form layout='vertical' onFinish={onSubmit}>
+            <Form layout='vertical' onFinish={onSubmit} form={bioForm}>
                 <Row>
                     <Col xs={12}>
                         <Form.Item
@@ -57,11 +88,8 @@ const Bio = () => {
                 <Row gutter={16}>
                     <Col>
                         <Button type='primary' htmlType='submit'>
-                            Add
+                            {!isEdit ? 'Add' : 'Edit'}
                         </Button>
-                    </Col>
-                    <Col>
-                        <Button>Edit</Button>
                     </Col>
                 </Row>
             </Form>
